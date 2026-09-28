@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ctx</title>
+<style>
+:root{
+  --k-pending:#e06c9f;
+  --k-user:#4ec9a7; --k-asst:#8fa4d8; --k-think:#6b7590;
+  --k-call:#e2a948; --k-result:#c98fd8; --k-compact:#5aa9e6;
+  --bg:#0f1115; --panel:#151821; --raise:#1b1f29; --line:#262b35; --line2:#323847;
+  --ink:#e8eaef; --dim:#8d94a5; --faint:#5c6474;
+  /* Status palette — validated against the dark surface: lightness band, chroma
+     floor, CVD separation (worst pair ΔE 16.0), normal-vision floor, contrast. */
+  --live:#0aa89a; --restart:#b45309; --config:#7c6df2; --root:#7b8396;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);overflow:hidden;
+  font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+  font-variant-numeric:tabular-nums;display:flex;flex-direction:column}
+button{font:inherit;cursor:pointer;background:var(--raise);color:var(--ink);
+  border:1px solid var(--line);border-radius:5px;padding:5px 11px}
+button:hover{border-color:var(--line2);background:#222736}
+button:disabled{opacity:.4;cursor:default}
+button.pri{background:var(--config);border-color:var(--config);color:#fff;font-weight:600}
+button.pri:hover{filter:brightness(1.1)}
+button.warn{border-color:var(--restart);color:#e0913f}
+.k{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--faint)}
+
+/* ============ top bar ============ */
+.brand{display:flex;align-items:center;gap:9px;padding:0 16px;font-weight:700;
+  letter-spacing:.04em;border-right:1px solid var(--line)}
+.brand b{width:7px;height:7px;border-radius:2px;background:var(--config)}
+.tabs{display:flex}
+.tabs button{border:0;border-radius:0;background:0;padding:0 18px;color:var(--dim);
+  border-bottom:2px solid transparent;font-size:12.5px;letter-spacing:.02em}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--config);font-weight:600;
+  background:var(--raise)}
+.acts{display:flex;align-items:center;gap:7px;padding:0 14px}
+
+/* ============ pages ============ */
+.page{flex:1;min-height:0;display:none;position:relative;overflow:hidden}
+.page.on{display:flex}
+
+/* ---- onboarding ---- */
+#onboard{flex:1;overflow-y:auto;padding:52px 24px;display:flex;justify-content:center}
+.ob{width:100%;max-width:820px}
+.ob h1{font-size:23px;margin:0 0 5px;letter-spacing:-.01em}
+.ob p{color:var(--dim);margin:0 0 20px;font-size:13px}
+#filter{width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);
+  border-radius:6px;padding:10px 13px;font:inherit;margin-bottom:14px}
+.slist{border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.srow{display:flex;align-items:center;gap:14px;padding:11px 15px;cursor:pointer;
+  border-bottom:1px solid var(--line);background:var(--panel)}
+.srow:last-child{border-bottom:0}
+.srow:hover{background:var(--raise)}
+.srow.sel{background:var(--raise);box-shadow:inset 3px 0 0 var(--config)}
+.srow.sel .nm{color:var(--ink)}
+.srow .go{color:var(--faint);font-size:15px;line-height:1;flex-shrink:0}
+.srow.sel .go{color:var(--config)}
+/* step 2 stays dimmed until a harness session is chosen */
+.step{opacity:.4;pointer-events:none;transition:opacity .2s}
+.step.ready{opacity:1;pointer-events:auto}
+#pickmsg{margin-top:2px}
+#pickmsg.ok{color:var(--live)}
+.srow .nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .mt{color:var(--faint);font-size:11.5px;white-space:nowrap;font-family:var(--mono)}
+.pill{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 7px;border-radius:3px;border:1px solid var(--line);color:var(--faint);
+  white-space:nowrap;min-width:66px;text-align:center}
+.pill.running{color:var(--live);border-color:var(--live)}
+
+/* ---- explorer stage ---- */
+#stagewrap{position:absolute;top:0;left:0;bottom:0;right:0;transition:right .4s var(--ease)}
+#stage{width:100%;height:100%;display:block;user-select:none}
+.grip{position:absolute;top:0;bottom:0;width:11px;margin-left:-5px;z-index:7;
+  cursor:col-resize;display:none;align-items:center;justify-content:center}
+.grip.on{display:flex}
+.grip::before{content:'';position:absolute;inset:0 5px;background:var(--line);
+  transition:background .14s}
+.grip::after{content:'';position:relative;width:3px;height:26px;border-radius:2px;
+  background:var(--faint);opacity:0;transition:opacity .14s}
+.grip:hover::before,.grip.drag::before{background:var(--line2)}
+.grip:hover::after,.grip.drag::after{opacity:1}
+.dragging *{transition:none !important}
+
+/* One colour per turn-by-turn kind. A turn-by-turn band wears its kind colour
+   at both levels, so the band and the records it lights match; every other
+   bucket keeps its edit-class colour. */
+.kinds{position:absolute;top:12px;left:12px;z-index:5;display:flex;gap:2px;
+  background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:3px}
+.kinds button{display:flex;align-items:center;gap:6px;border:0;background:0;
+  color:var(--faint);border-radius:5px;padding:4px 9px;font-size:11.5px}
+.kinds button i{width:8px;height:8px;border-radius:2px;background:var(--c);
+  opacity:.45;transition:opacity .14s}
+.kinds button b{font-weight:400;color:var(--faint);font-size:10.5px;font-family:var(--mono)}
+.kinds button:hover{background:var(--raise);color:var(--ink)}
+.kinds button.on{background:var(--raise);color:var(--ink);font-weight:600}
+.kinds button.on i{opacity:1}
+.kinds button.on b{color:var(--dim)}
+
+/* a tool call and what it returned, in one panel */
+.pairhd{display:flex;align-items:baseline;gap:9px;margin:20px 0 9px;
+  padding-top:15px;border-top:1px solid var(--line);
+  font-size:12px;font-weight:600;color:var(--config)}
+.pairhd span{font-weight:400;color:var(--faint);font-size:11px;font-family:var(--mono)}
+.pairbody{border-left:2px solid var(--line2);padding-left:12px}
+
+/* ---- side panel ---- */
+.side{position:absolute;top:0;right:0;bottom:0;background:var(--panel);
+  border-left:1px solid var(--line);display:flex;flex-direction:column;z-index:6;
+  transform:translateX(102%);transition:transform .4s var(--ease);overscroll-behavior:contain}
+.side.open{transform:none}
+.side .hd{display:flex;align-items:center;gap:8px;padding:9px 14px;
+  border-bottom:1px solid var(--line);flex-shrink:0}
+.side .hd .k{flex:1}
+.ptabs{display:flex;border-bottom:1px solid var(--line);flex-shrink:0}
+.ptabs button{border:0;border-radius:0;background:0;color:var(--dim);padding:7px 13px;
+  border-bottom:2px solid transparent;font-size:12px}
+.ptabs button.on{color:var(--ink);border-bottom-color:var(--config);font-weight:600}
+.ptabs .dot{width:5px;height:5px;border-radius:50%;background:var(--live);
+  display:inline-block;margin-left:5px;vertical-align:middle}
+.pbody{flex:1;overflow-y:auto;padding:15px;overscroll-behavior:contain}
+.chip{display:inline-block;font-weight:700;font-size:10px;letter-spacing:.08em;
+  padding:2px 8px;border-radius:3px;border:1px solid}
+h2{margin:11px 0 2px;font-size:16px;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:11.5px;margin-bottom:13px;font-family:var(--mono)}
+.how{background:var(--bg);border:1px solid var(--line);border-left:2px solid var(--line);
+  border-radius:5px;padding:10px 12px;margin:13px 0;font-size:12.5px;color:#c2c8d6}
+.how b{display:block;margin-bottom:4px;color:var(--ink)}
+.note{color:var(--dim);font-size:12px;margin-top:7px}
+.row{display:flex;gap:7px;margin:11px 0;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:4px 10px;font-size:11.5px;color:var(--dim);
+  background:transparent}
+.seg button.on{background:var(--raise);color:var(--ink);font-weight:600}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;margin:12px 0}
+.kv dt{color:var(--faint);white-space:nowrap}
+.kv dd{margin:0;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis}
+
+/* ---- rendered content ---- */
+pre{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:11px;
+  white-space:pre-wrap;word-break:break-word;font-size:11.5px;color:#c2c8d6;
+  font-family:var(--mono);line-height:1.55;margin:10px 0}
+.body{font-size:13px;line-height:1.62;color:#ced4e0;word-break:break-word}
+.body h1,.body h2,.body h3,.body h4{color:var(--ink);line-height:1.3;margin:16px 0 7px}
+.body h1{font-size:16px}.body h2{font-size:14.5px}.body h3{font-size:13.5px}
+.body h4{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.body p{margin:8px 0}
+.body ul,.body ol{margin:8px 0;padding-left:20px}
+.body li{margin:2px 0}
+.body blockquote{margin:9px 0;padding:1px 0 1px 12px;border-left:2px solid var(--line);
+  color:var(--dim)}
+.body hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.body a{color:#8ab4f8}
+.body code{background:#0a0c10;border:1px solid var(--line);border-radius:3px;
+  padding:1px 5px;font-family:var(--mono);font-size:11.5px;color:#c6cdda}
+.body pre code{background:0;border:0;padding:0}
+.body pre .lang{position:absolute;top:5px;right:9px;font-size:9.5px;color:var(--faint);
+  text-transform:uppercase;letter-spacing:.08em}
+.body pre{position:relative}
+.body table{border-collapse:collapse;margin:10px 0;width:100%;font-size:12px}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px;text-align:left}
+.body th{background:var(--bg);color:var(--ink);font-weight:600}
+.body .xtag{color:#78839c}
+input[type=text],textarea,select{background:var(--bg);color:var(--ink);
+  border:1px solid var(--line);border-radius:5px;padding:6px 9px;font:inherit;width:100%}
+textarea{font-family:var(--mono);font-size:11.5px;line-height:1.55;resize:vertical;min-height:150px}
+select{width:auto;padding:5px 8px;font-size:12px}
+label.f{display:block;margin:10px 0 0}
+label.f>span{display:block;margin-bottom:4px}
+.lnode.output{border-left-color:#9db4d0}
+.lnode.running{opacity:.7}
+.badgeq{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.07em;
+  padding:1px 5px;border-radius:3px;border:1px solid var(--restart);color:var(--restart);
+  margin-left:6px}
+/* ---------- menu bar ---------- */
+.menubar{display:flex;align-items:stretch;background:var(--panel);
+  border-bottom:1px solid var(--line);flex-shrink:0;height:30px;user-select:none}
+.mlogo{display:flex;align-items:center;gap:8px;padding:0 13px;font-weight:700;
+  font-size:12px;letter-spacing:.09em;border-right:1px solid var(--line)}
+.mlogo b{width:6px;height:6px;border-radius:1px;background:var(--config)}
+.menu{position:relative}
+.menu>button{border:0;border-radius:0;background:0;color:var(--dim);height:100%;
+  padding:0 12px;font-size:12px}
+.menu>button:hover,.menu.open>button{background:var(--raise);color:var(--ink)}
+.mdrop{position:absolute;top:100%;left:0;min-width:236px;background:var(--raise);
+  border:1px solid var(--line2);border-radius:0 0 5px 5px;padding:4px;z-index:60;
+  display:none;box-shadow:0 12px 30px rgba(0,0,0,.55)}
+.menu.open .mdrop{display:block}
+.mdrop button{display:flex;width:100%;justify-content:space-between;gap:20px;
+  border:0;border-radius:3px;background:0;color:var(--ink);padding:5px 9px;
+  font-size:12px;text-align:left}
+.mdrop button:hover{background:var(--config);color:#fff}
+.mdrop button:disabled{color:var(--faint);background:0}
+.mdrop kbd{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.mdrop button:hover kbd{color:#dfd8ff}
+.msep{height:1px;background:var(--line);margin:4px 2px}
+.mgap{width:1px;background:var(--line);margin:5px 8px}
+.menubar .tabs{display:flex}
+.menubar .tabs button{border:0;border-radius:0;background:0;color:var(--dim);height:100%;
+  padding:0 15px;font-size:12px;border-bottom:2px solid transparent}
+.menubar .tabs button:hover{background:var(--raise);color:var(--ink)}
+.menubar .tabs button.on{color:var(--ink);background:var(--raise);font-weight:600;
+  border-bottom-color:var(--config)}
+.menubar .tabs #dcount{color:var(--restart);font-weight:700;margin-left:5px}
+.slegend{display:flex;gap:12px;align-items:center;margin-left:auto}
+.slegend i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:5px}
+.mright{margin-left:auto;display:flex;align-items:center;gap:10px;padding:0 13px;
+  color:var(--faint);font-size:11px;font-family:var(--mono)}
+.mright b{color:var(--dim);font-weight:600;font-family:inherit}
+/* Refresh: the session keeps moving while you read it, so the button says
+   whether what is on screen is still what is on disk. */
+.refreshbtn{display:flex;align-items:center;gap:6px;background:0;border:1px solid var(--line);
+  color:var(--dim);border-radius:5px;padding:3px 9px;font-size:11px;font-family:var(--mono)}
+.refreshbtn:hover{background:var(--raise);color:var(--ink);border-color:var(--line2)}
+.refreshbtn .rico{display:inline-block;font-size:12px;line-height:1}
+.refreshbtn.spin .rico{animation:spin .7s linear infinite}
+.refreshbtn.stale{border-color:var(--restart);color:var(--restart)}
+.refreshbtn.stale::after{content:'';width:5px;height:5px;border-radius:50%;
+  background:var(--restart);box-shadow:0 0 0 3px rgba(226,169,72,.16)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- onboarding modes ---------- */
+.obtabs{display:flex;gap:0;border:1px solid var(--line);border-radius:6px;
+  overflow:hidden;margin-bottom:18px;width:fit-content}
+.obtabs button{border:0;border-radius:0;background:0;color:var(--dim);padding:7px 16px;
+  font-size:12.5px}
+.obtabs button.on{background:var(--raise);color:var(--ink);font-weight:600}
+.obpane{display:none}.obpane.on{display:block}
+.namerow{display:flex;gap:8px;margin:14px 0 18px;align-items:center}
+.namerow input{flex:1}
+
+/* ---------- code cells ---------- */
+.cell{margin:10px 0}
+.cellsrc{width:100%;min-height:150px;font-family:var(--mono);font-size:11.5px;
+  line-height:1.55;background:#0a0c10;color:#ced4e0;border:1px solid var(--line);
+  border-radius:5px;padding:10px;resize:vertical}
+.cellout{border:1px solid var(--line);border-left:2px solid var(--live);
+  border-radius:5px;background:var(--bg);padding:10px 11px;margin-top:8px}
+.cellout.err{border-left-color:var(--restart)}
+.cellout pre{border:0;background:0;padding:0;margin:0}
+.cellout img{max-width:100%;border-radius:4px;margin-top:8px;display:block;
+  background:#fff}
+.cellmeta{color:var(--faint);font-size:10.5px;font-family:var(--mono);margin-top:6px}
+.lnode.code{border-left-color:#9db4d0}
+.lnode .thumb{margin-top:6px;border-radius:3px;max-width:100%;background:#fff}
+
+.statusbar{display:flex;align-items:center;gap:14px;padding:5px 15px;
+  border-top:1px solid var(--line);background:var(--panel);font-size:11px;
+  color:var(--faint);flex-shrink:0}
+.statusbar b{color:var(--dim);font-weight:600}
+.s1{color:#9db4d0}.s2{color:#a3c49a}.s3{color:#d8b980}.s4{color:#b9a3d9}.s5{color:var(--faint)}
+/* ---------- attached images ---------- */
+.imgs{margin:12px 0}
+.imgfig{border:1px solid var(--line);border-radius:5px;overflow:hidden;margin-bottom:10px;
+  background:var(--bg)}
+.imgfig img{display:block;width:100%;height:auto;background:#fff;cursor:zoom-in}
+.imgfig figcaption{display:flex;gap:12px;padding:5px 9px;font-size:10.5px;
+  font-family:var(--mono);color:var(--faint);border-top:1px solid var(--line)}
+.imgfig figcaption b{color:var(--dim);font-weight:600}
+/* ---------- modal dialogs ---------- */
+.modal{position:fixed;inset:0;z-index:300;display:none;align-items:center;
+  justify-content:center;padding:24px;background:rgba(6,8,12,.62);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.modal.on{display:flex;animation:mfade .14s var(--ease)}
+@keyframes mfade{from{opacity:0}to{opacity:1}}
+.mbox{width:min(520px,100%);background:var(--panel);border:1px solid var(--line2);
+  border-radius:10px;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden;
+  animation:mrise .18s var(--ease)}
+@keyframes mrise{from{opacity:0;transform:translateY(10px) scale(.985)}
+                 to{opacity:1;transform:none}}
+.mhd{display:flex;align-items:center;gap:10px;padding:14px 18px 0;
+  font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+.micon{width:22px;height:22px;border-radius:5px;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.micon.info{background:rgba(124,109,242,.16);color:var(--config)}
+.micon.warn{background:rgba(180,83,9,.18);color:#e0913f}
+.micon.ok{background:rgba(10,168,154,.16);color:var(--live)}
+.mbody code.inl{display:inline;margin:0;padding:1px 5px;font-size:11.5px;
+  background:var(--raise);border:1px solid var(--line);border-radius:3px;
+  font-family:var(--mono);color:var(--ink)}
+.mbody b{color:var(--ink)}
+.mbody{padding:9px 18px 4px;font-size:13px;line-height:1.6;color:#c2c8d6;
+  white-space:pre-wrap;word-break:break-word;max-height:48vh;overflow-y:auto}
+.mbody code,.mbody .cmd{display:block;margin-top:9px;background:var(--bg);
+  border:1px solid var(--line);border-radius:5px;padding:9px 11px;
+  font-family:var(--mono);font-size:11.5px;color:#ced4e0;white-space:pre-wrap;
+  user-select:all}
+.mfield{display:none;padding:10px 18px 2px}
+.mfield.on{display:block}
+.mact{display:flex;justify-content:flex-end;gap:8px;padding:16px 18px}
+.mact button{min-width:84px;justify-content:center}
+.mact button.danger{background:var(--restart);border-color:var(--restart);color:#fff;
+  font-weight:600}
+.mact button.danger:hover{filter:brightness(1.12)}
+#lightbox{position:fixed;inset:0;background:rgba(6,8,12,.94);z-index:200;display:none;
+  align-items:center;justify-content:center;cursor:zoom-out;padding:24px}
+#lightbox.on{display:flex}
+#lightbox img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;
+  border-radius:4px}
+.trunc{color:var(--faint);font-size:11.5px;margin-top:9px;font-style:italic}
+/* deployment operations: a summary line each, the whole record on demand */
+.ops{margin-top:8px}
+.opsum{color:var(--faint);font-size:11.5px;margin-bottom:8px}
+.op{border:1px solid var(--line);border-radius:6px;margin-bottom:5px;background:var(--panel)}
+.op summary{display:flex;align-items:baseline;gap:9px;padding:7px 11px;cursor:pointer;
+  font-size:12px;list-style:none}
+.op summary::-webkit-details-marker{display:none}
+.op summary::before{content:'\25B8';color:var(--faint);font-size:10px;transition:transform .12s}
+.op[open] summary::before{transform:rotate(90deg)}
+.op summary:hover{background:var(--raise)}
+.op .tgt{font-family:var(--mono);color:var(--dim);white-space:nowrap}
+.op .pk{font-family:var(--mono);color:var(--faint);font-size:11px;white-space:nowrap}
+.op .pv{font-family:var(--mono);color:var(--faint);font-size:11px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.oprec{margin:0 11px 11px;padding:10px;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;max-height:460px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font-size:11.5px;overscroll-behavior:contain}
+
+/* ---- labs ---- */
+/* Labs is a real two-column split, not a panel floating over the board: the
+   canvas wrap, the grip and the side panel are flex siblings sharing the width.
+   Widening the panel therefore narrows the canvas instead of covering it, and
+   closing the panel gives the space straight back. */
+#pg-labs.on{display:flex;align-items:stretch}
+.labwrap{position:relative;flex:1 1 auto;min-width:0}
+#pg-labs>.grip{position:relative;flex:0 0 11px;margin-left:0;left:auto}
+#pg-labs>.side{position:relative;flex:0 0 auto;transform:none;transition:none;z-index:auto}
+#pg-labs>.side:not(.open){display:none}
+#lab{position:absolute;inset:0;overflow:hidden;cursor:grab}
+#lab.grab{cursor:grabbing}
+#lab{background-color:#0c0e12;
+  background-image:radial-gradient(circle,#232834 1px,transparent 1px);
+  background-size:24px 24px;background-position:0 0}
+#lcanvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+#ledges{position:absolute;left:-20000px;top:-20000px;pointer-events:none;overflow:visible}
+#lnodes{position:absolute;left:0;top:0}
+.zoombar{position:absolute;right:12px;bottom:12px;z-index:5;display:flex;align-items:center;
+  gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:3px;
+  box-shadow:0 4px 16px rgba(0,0,0,.45)}
+.zoombar button{border:0;background:0;color:var(--dim);border-radius:4px;padding:4px 9px;
+  font-size:12px;min-width:30px}
+.zoombar button:hover{background:var(--raise);color:var(--ink)}
+#zoompct{font-variant-numeric:tabular-nums;min-width:52px;font-size:11.5px}
+.zsep{width:1px;height:16px;background:var(--line);margin:0 3px}
+
+/* ---------- node cards ---------- */
+/* A card is four lines: who it is, what it is called, what it holds, what that
+   adds up to. The colour moves to a 2px left edge -- a stripe reads as a
+   category without adding a band of height to every card on the board. */
+.lnode{position:absolute;width:206px;background:var(--panel);
+  border:1px solid var(--line);border-left:2px solid var(--line2);
+  border-radius:7px;cursor:default;
+  box-shadow:0 1px 3px rgba(0,0,0,.35);
+  transition:box-shadow .13s,border-color .13s;overflow:hidden}
+.lnode:hover{border-color:var(--line2);box-shadow:0 3px 12px rgba(0,0,0,.4)}
+.lnode.sel{box-shadow:0 0 0 1px var(--config),0 4px 16px rgba(0,0,0,.4)}
+.lnode.wire{box-shadow:0 0 0 1px var(--live)}
+.lnode .lbar{display:none}
+/* the three stages, each with its own edge so the pipeline reads at a glance */
+.lnode.session{border-left-color:var(--root)}
+.lnode.note{border-left-color:var(--line2)}
+.lnode.prompt{border-left-color:var(--live)}
+.lnode.context{border-left-color:var(--restart)}
+.lnode.extraction{border-left-color:var(--k-user)}
+.lnode.analysis{border-left-color:var(--config)}
+.lnode.review{border-left-color:var(--k-pending)}
+.lq{font-family:var(--mono);font-size:10.5px;color:var(--k-user);padding:0 10px 1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lq.empty{color:var(--faint)}
+.thumb.wide{width:100%;border-radius:5px;margin-top:8px}
+
+/* ══════════════ Labs panel ══════════════
+   Minimal by subtraction: hairlines instead of boxes, one primary action, and
+   the numbers stated once and large. Everything here is scoped to #lab-side so
+   Explorer's panel is untouched. */
+#lab-side .pbody{padding:18px 18px 30px}
+#lab-side .ptabs button{padding:9px 14px;font-size:11.5px;letter-spacing:.01em}
+
+/* header: identity, then the title, then the wiring */
+.nhead{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.nlabel{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink);
+  letter-spacing:.02em}
+.nkind{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  border:1px solid var(--line);border-radius:3px;padding:1px 6px}
+.nkind.extraction{color:var(--k-user);border-color:color-mix(in srgb,var(--k-user) 40%,transparent)}
+.nkind.analysis{color:var(--config);border-color:color-mix(in srgb,var(--config) 45%,transparent)}
+.nkind.review{color:var(--k-pending);border-color:color-mix(in srgb,var(--k-pending) 40%,transparent)}
+.nwhen{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+h2.ntitle{margin:0 0 16px;font-size:19px;line-height:1.25;letter-spacing:-.018em;
+  font-weight:600;color:var(--ink)}
+
+/* the numbers, stated once */
+.stats{display:flex;gap:26px;padding:13px 0 15px;border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);margin-bottom:16px}
+.stats>div{display:flex;flex-direction:column;gap:3px}
+.stats i{font-style:normal;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint)}
+.stats b{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;line-height:1}
+
+/* wiring, as one quiet line */
+.wires{display:flex;flex-wrap:wrap;gap:6px 18px;margin:-6px 0 16px;
+  font-family:var(--mono);font-size:11px;color:var(--dim)}
+.wires i{font-style:normal;color:var(--faint);margin-right:6px;
+  font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
+
+/* section labels: a hairline and a whisper, not a heading */
+#lab-side .k{display:block;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);padding-bottom:7px;margin:22px 0 10px;border-bottom:1px solid var(--line)}
+#lab-side .stage>.k:first-child{margin-top:0}
+
+/* guidance loses its box and keeps its rule */
+#lab-side .how{background:transparent;border:0;border-left:2px solid var(--line2);
+  border-radius:0;padding:2px 0 2px 13px;margin:14px 0;font-size:12.5px;
+  color:var(--dim);line-height:1.6}
+#lab-side .how b{color:var(--ink);font-weight:600}
+#lab-side .note{font-size:11.5px;color:var(--faint);line-height:1.6}
+
+/* controls: one primary, the rest recede */
+#lab-side .row{gap:8px;margin:12px 0}
+#lab-side button{border-radius:6px;padding:6px 12px;font-size:12px;
+  border:1px solid var(--line);background:transparent;color:var(--dim)}
+#lab-side button:hover{border-color:var(--line2);color:var(--ink);background:var(--raise)}
+#lab-side button.pri{background:var(--ink);border-color:var(--ink);color:#12141a;font-weight:600}
+#lab-side button.pri:hover{background:#fff;border-color:#fff}
+#lab-side button.warn{border-color:transparent;color:var(--restart)}
+#lab-side button.warn:hover{border-color:var(--restart);background:transparent}
+#lab-side input[type=text],#lab-side select,#lab-side textarea{
+  background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--ink);
+  padding:6px 10px;font-size:12px}
+#lab-side input[type=text]:focus,#lab-side textarea:focus{outline:0;border-color:var(--line2)}
+
+/* stage panes in the side panel */
+.stage{margin-top:14px}
+.stage .row{gap:6px;align-items:center}
+.grow{flex:1;min-width:0}
+.chk{display:flex;align-items:center;gap:4px;color:var(--faint);font-size:11px;white-space:nowrap}
+.xsum{color:var(--faint);font-size:11px;margin:2px 0 4px;font-family:var(--mono)}
+/* a list, not a table: hairlines between rows and nothing around them */
+.xlist{max-height:340px;overflow:auto;overscroll-behavior:contain;margin:0 -18px;
+  padding:0 18px}
+.xrow{display:grid;grid-template-columns:46px 1fr auto;align-items:baseline;
+  column-gap:12px;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--line);
+  font-size:11.5px}
+.xrow:last-child{border-bottom:0}
+.xrow:hover .xt{color:var(--ink)}
+.xrow:hover .xl{color:var(--ink)}
+.xl{font-family:var(--mono);font-weight:700;color:var(--k-user);font-size:11px;
+  transition:color .12s}
+.xb{display:none}
+.xt{min-width:0;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:color .12s;line-height:1.5}
+.xn{font-family:var(--mono);color:var(--faint);font-size:10.5px;
+  font-variant-numeric:tabular-nums}
+.sendnote{width:100%;min-height:58px;margin-top:8px;background:var(--bg);color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:12px;
+  resize:vertical;line-height:1.55}
+.sendnote::placeholder{color:var(--faint)}
+#lab-side .cellsrc{border-radius:6px;font-size:11.5px;line-height:1.6}
+#lab-side .cellout{background:transparent;border:0;border-left:2px solid var(--live);
+  border-radius:0;padding:2px 0 2px 13px;margin:12px 0}
+#lab-side .cellout.err{border-left-color:var(--restart)}
+#lab-side .empty{padding:56px 10px;font-size:12px;line-height:1.7}
+.sentbox{border-left:2px solid var(--config);padding:1px 0 1px 13px;margin:0 0 16px}
+.sentbox .sh{display:flex;align-items:baseline;gap:9px;font-size:11px;margin-bottom:6px}
+.sentbox .sh b{color:var(--config);font-family:var(--mono);font-weight:700}
+.sentbox .sh span{flex:1;min-width:0;color:var(--dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.sentbox .sh i{font-style:normal;color:var(--faint);font-size:10px;font-family:var(--mono)}
+.sentbox .body{font-size:12.5px}
+.auditlist{margin:0 -18px;padding:0 18px}
+.arow{display:grid;grid-template-columns:58px 1fr;column-gap:12px;row-gap:3px;
+  padding:9px 0;font-size:12px;border-bottom:1px solid var(--line)}
+.arow:last-child{border-bottom:0}
+.av{font-family:var(--mono);font-weight:700;font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;padding-top:2px}
+.an{min-width:0;color:var(--ink);line-height:1.55}
+.at{grid-column:2;color:var(--faint);font-size:10px;font-family:var(--mono)}
+.lnode.code    .lbar{background:#9db4d0}
+.lnode.output  .lbar{background:#b9a3d9}
+.lnode .lhd{display:flex;align-items:baseline;gap:7px;padding:8px 10px 0;cursor:grab}
+.lnode .lhd:active{cursor:grabbing}
+.lnode .ll{font-family:var(--mono);font-weight:700;font-size:10.5px;color:var(--dim);
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.lnode .lk{font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+.lnode .lwhen{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.lnode.extraction .lk{color:var(--k-user)}
+.lnode.analysis .lk{color:var(--config)}
+.lnode.review .lk{color:var(--k-pending)}
+.lnode .lt{padding:3px 10px 0;font-size:12px;line-height:1.3;color:var(--ink);
+  font-weight:500;letter-spacing:-.005em;
+  display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lnode .lb{padding:4px 10px 0;font-size:10.5px;line-height:1.42;color:var(--faint);
+  display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lnode .lb.mono{font-family:var(--mono);font-size:10px;line-height:1.4}
+.lnode .thumb{display:block;width:calc(100% - 20px);margin:7px 10px 0;border-radius:3px;
+  background:#fff}
+.lnode .lft{padding:6px 10px 8px;color:var(--dim);font-size:9.5px;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.lnode .lb:last-of-type{padding-bottom:9px}
+.port{position:absolute;top:50%;width:11px;height:11px;margin-top:-5.5px;border-radius:50%;
+  background:var(--panel);border:2px solid var(--line2);opacity:0;transition:opacity .12s}
+.port.l{left:-6px}.port.r{right:-6px}
+.lnode:hover .port,.lnode.sel .port{opacity:1}
+.lnode.wire .port.r{opacity:1;border-color:var(--live)}
+
+.toolbar{position:absolute;top:12px;left:12px;z-index:4;display:flex;gap:6px;
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px}
+.toolbar button{padding:4px 9px;font-size:11.5px}
+.toolbar button.on{background:var(--live);border-color:var(--live);color:#04211f;font-weight:600}
+.lab .grab,#lab.grab{cursor:grabbing}
+#lab.wiring .lnode{cursor:crosshair}
+.labhint{position:absolute;left:12px;bottom:10px;color:var(--faint);font-size:11px;
+  pointer-events:none}
+
+/* ---- deployment ---- */
+.deploywrap{display:flex;width:100%;min-height:0}
+.dlist{width:min(380px,36vw);border-right:1px solid var(--line);background:var(--panel);
+  overflow-y:auto;overscroll-behavior:contain;flex-shrink:0}
+.drow{padding:11px 15px;border-bottom:1px solid var(--line);cursor:pointer}
+.drow:hover{background:var(--raise)}
+.drow.sel{background:var(--raise);box-shadow:inset 2px 0 0 var(--config)}
+.drow .t{display:flex;gap:8px;align-items:baseline}
+.drow .l{font-weight:700;font-size:11px;color:var(--dim)}
+.drow .n{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .m{color:var(--faint);font-size:11px;font-family:var(--mono);margin-top:3px}
+.st{font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:1px 6px;border-radius:3px;border:1px solid}
+.st.staged{color:var(--restart);border-color:var(--restart)}
+/* A config change is written, then launched, then confirmed. Only the last one
+   means the session actually has it. */
+.st.armed{color:var(--restart);border-color:var(--restart)}
+.st.launched{color:var(--config);border-color:var(--config)}
+.st.in_effect{color:var(--live);border-color:var(--live)}
+.st.dropped{color:var(--restart);border-color:var(--restart)}
+.st.deployed{color:var(--live);border-color:var(--live)}
+.dpane{flex:1;min-width:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 24px}
+.empty{color:var(--faint);padding:40px 22px;text-align:center;font-size:12.5px}
+.banner{border:1px solid var(--line);border-left:2px solid var(--restart);
+  background:var(--panel);border-radius:5px;padding:11px 13px;margin:0 0 16px;font-size:12.5px}
+.banner b{display:block;margin-bottom:3px}
+.banner.ok{border-left-color:var(--live)}
+
+/* ---- log rows ---- */
+.logrow{display:flex;gap:9px;padding:6px 8px;border-radius:4px;font-size:11.5px;
+  align-items:baseline;border:1px solid transparent}
+.logrow:nth-child(odd){background:var(--bg)}
+.logrow.err{border-color:#b4530955}
+.logrow time{color:var(--faint);font-family:var(--mono);font-size:10.5px;flex-shrink:0}
+.logrow b{color:#9db4d0;font-weight:600;flex-shrink:0;min-width:104px;font-family:var(--mono);
+  font-size:11px}
+.logrow span{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- sankey marks ---- */
+.band{cursor:pointer}
+.ribbon{fill-opacity:.3}.nodebar{fill-opacity:.85}
+.band:hover .ribbon{fill-opacity:.6}.band:hover .nodebar{fill-opacity:1}
+.band.pend .ribbon{fill-opacity:.16}
+.band.pend .nodebar{fill-opacity:.55;stroke:var(--k-pending);stroke-width:1;stroke-dasharray:3 2}
+/* in the package, but arriving by launch flag rather than through the transcript */
+.band.inject .ribbon{fill-opacity:.3}
+.band.inject .nodebar{fill-opacity:.85;stroke:var(--live);stroke-width:1}
+/* the section as it is, next to the section as it would be */
+.twostate{display:flex;align-items:center;gap:14px;margin:14px 0 4px}
+.twostate>div{flex:1;background:var(--raise);border:1px solid var(--line);
+  border-radius:7px;padding:9px 12px}
+.twostate .to{border-color:var(--k-pending)}
+.twostate .k{display:block;color:var(--faint);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.07em;margin-bottom:3px}
+.twostate b{font-size:17px;font-family:var(--mono)}
+.twostate i{font-style:normal;color:var(--faint);font-size:11px;margin-left:7px}
+.twostate .arrow{flex:0 0 auto;background:0;border:0;padding:0;color:var(--faint)}
+.band.sel .ribbon{fill-opacity:.72}.band.sel .nodebar{fill-opacity:1}
+/* the one record you opened, inside a stream where its whole kind is lit */
+.band.sel .nodebar{stroke:var(--ink);stroke-width:1.5;stroke-opacity:.85}
+.blabel{font-size:11.5px;fill:var(--ink);dominant-baseline:middle}
+.btag{font-size:11.5px;font-weight:700;dominant-baseline:middle}
+.bval{font-size:10.5px;fill:var(--dim);dominant-baseline:middle}
+.rootlabel{font-size:10px;fill:var(--faint);text-transform:uppercase;letter-spacing:.09em}
+.rootval{font-size:13px;fill:var(--ink);font-weight:600}
+.sbar{fill:var(--faint);opacity:.3}
+#tip{position:fixed;pointer-events:none;background:#05070b;border:1px solid var(--line2);
+  border-radius:5px;padding:7px 10px;font-size:11.5px;opacity:0;transition:opacity .1s;
+  z-index:20;max-width:300px;box-shadow:0 8px 26px rgba(0,0,0,.6)}
+#tip b{display:block;margin-bottom:2px}
+#tip i{font-style:normal;color:var(--dim)}
+
+/* ---- footer ---- */
+footer{display:flex;border-top:1px solid var(--line);background:var(--panel);
+  flex-shrink:0;overflow-x:auto}
+.fc{padding:7px 15px;border-right:1px solid var(--line);min-width:0;white-space:nowrap}
+.fc v{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.fc.path{flex:1;min-width:120px}
+.fc.path v{font-family:var(--mono);font-size:11px;color:#c2c8d6;cursor:pointer}
+.fc.path v:hover{color:var(--ink);text-decoration:underline}
+</style>
+</head>
+<body>
+
+<section id="onboard">
+  <div class="ob">
+    <h1>ctx</h1>
+    <p>Open a ctx session you were working in, or start a new one against a
+       harness session on this machine.</p>
+    <div class="obtabs">
+      <button id="ob-t-open" class="on" onclick="obMode('open')">Open ctx session</button>
+      <button id="ob-t-new" onclick="obMode('new')">New ctx session</button>
+    </div>
+
+    <div class="obpane on" id="ob-open">
+      <div class="slist" id="ctxlist"></div>
+    </div>
+
+    <div class="obpane" id="ob-new">
+      <span class="k">1 · choose a harness session</span>
+      <input id="filter" placeholder="Filter by name, folder or harness…"
+             autocomplete="off" style="margin:8px 0 14px">
+      <div class="slist" id="slist"></div>
+      <div class="k" id="pickmsg" style="margin-top:10px">Click a session above to select it.</div>
+      <div class="step" id="step2">
+        <span class="k" style="display:block;margin-top:18px">2 · name this ctx session</span>
+        <div class="namerow">
+          <input type="text" id="ctxname" placeholder="e.g. Trim tool schemas">
+          <button class="pri" id="ctxcreate" onclick="createCtx()">Create session</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="menubar" id="menubar" style="display:none">
+  <div class="mlogo"><b></b>CTX</div>
+  <div class="menu" data-m="file"><button onclick="menu('file')">File</button>
+    <div class="mdrop">
+      <button onclick="mFile('new')">New ctx session…<kbd>⌘N</kbd></button>
+      <button onclick="mFile('open')">Open ctx session…<kbd>⌘O</kbd></button>
+      <div class="msep"></div>
+      <button onclick="mFile('save')">Save now<kbd>⌘S</kbd></button>
+      <button onclick="mFile('rename')">Rename…</button>
+      <div class="msep"></div>
+      <button onclick="refreshData(false)">Refresh from transcript<kbd>⌘R</kbd></button>
+      <button onclick="mFile('auto')">Auto-refresh<kbd id="autokbd">off</kbd></button>
+      <div class="msep"></div>
+      <button onclick="mFile('close')">Close session</button>
+    </div></div>
+  <div class="menu" data-m="edit"><button onclick="menu('edit')">Edit</button>
+    <div class="mdrop">
+      <button onclick="mEdit('note')">New note node</button>
+      <button onclick="mEdit('prompt')">New prompt node</button>
+      <button onclick="mEdit('code')">New code cell<kbd>⌘K</kbd></button>
+      <div class="msep"></div>
+      <button onclick="mEdit('connect')">Toggle connect mode<kbd>C</kbd></button>
+      <button onclick="mEdit('delete')">Delete selected node<kbd>⌫</kbd></button>
+    </div></div>
+  <div class="menu" data-m="view"><button onclick="menu('view')">View</button>
+    <div class="mdrop">
+      <button onclick="mView('explorer')">Explorer<kbd>1</kbd></button>
+      <button onclick="mView('labs')">Labs<kbd>2</kbd></button>
+      <button onclick="mView('deploy')">Deployment<kbd>3</kbd></button>
+      <div class="msep"></div>
+      <button onclick="mView('fit')">Fit canvas<kbd>F</kbd></button>
+      <button onclick="mView('reset')">Reset panel widths</button>
+    </div></div>
+  <div class="menu" data-m="run"><button onclick="menu('run')">Run</button>
+    <div class="mdrop">
+      <button onclick="mRun('cell')">Run code cell<kbd>⇧⏎</kbd></button>
+      <button onclick="mRun('pipeline')">Run pipeline</button>
+      <div class="msep"></div>
+      <button onclick="mRun('validate')">Validate transcript</button>
+      <button onclick="mRun('session')">Restart harness session</button>
+    </div></div>
+  <div class="menu" data-m="help"><button onclick="menu('help')">Help</button>
+    <div class="mdrop">
+      <button onclick="mHelp('why')">What ctx is for</button>
+      <button onclick="mHelp('flow')">A working session, end to end</button>
+      <button onclick="mHelp('voice')">Working by voice</button>
+      <button onclick="mHelp('mcp')">Connect an agent (MCP)…</button>
+      <div class="msep"></div>
+      <button onclick="mHelp('about')">About ctx</button>
+    </div></div>
+  <div class="mgap"></div>
+  <div class="tabs">
+    <button data-p="explorer" class="on" onclick="setPage('explorer')">Explorer</button>
+    <button data-p="labs" onclick="setPage('labs')">Labs</button>
+    <button data-p="deploy" onclick="setPage('deploy')">Deployment<span id="dcount"></span></button>
+  </div>
+  <div class="mright">
+    <button class="refreshbtn" id="refreshbtn" onclick="refreshData(false)"
+            title="Re-read the transcript (⌘R)"><span class="rico">⟳</span>Refresh</button>
+    <b id="mws">—</b><span id="mharness"></span></div>
+</div>
+
+<!-- ============ EXPLORER ============ -->
+<div class="page on" id="pg-explorer">
+  <div id="stagewrap"><svg id="stage"></svg>
+    <div class="kinds" id="kinds" style="display:none"></div>
+  </div>
+  <div class="grip" id="gripA" title="Drag to resize · double-click to reset"></div>
+  <div class="grip" id="gripB" title="Drag to resize · double-click to reset"></div>
+  <div class="side" id="ex-side">
+    <div class="hd"><span class="k" id="ex-k">Detail</span>
+      <button onclick="toLabs()" id="tolabs">Send to Labs</button>
+      <button onclick="closeSide()">Close</button></div>
+    <div class="pbody" id="ex-body"></div>
+  </div>
+</div>
+
+<!-- ============ LABS ============ -->
+<div class="page" id="pg-labs">
+  <div class="labwrap" id="labwrap">
+    <div id="lab">
+      <div id="lcanvas">
+        <svg id="ledges" width="40000" height="40000" viewBox="0 0 40000 40000"></svg>
+        <div id="lnodes"></div>
+      </div>
+      <div class="zoombar">
+        <button onclick="zoomBy(1/1.25)" title="Zoom out">&minus;</button>
+        <button onclick="zoomReset()" id="zoompct" title="Reset to 100%">100%</button>
+        <button onclick="zoomBy(1.25)" title="Zoom in">+</button>
+        <span class="zsep"></span>
+        <button onclick="fitLab()" title="Fit to content (F)">Fit</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button onclick="newNode('extraction')" title="Gather the records that mention something">+ Extraction</button>
+      <button onclick="newNode('analysis')" title="A notebook cell over what the extractions collected">+ Analysis</button>
+      <button onclick="newNode('review')" title="Hold a proposal still, audit it, then stage it">+ Review</button>
+      <button onclick="newNode('note')">+ Note</button>
+      <button id="wirebtn" onclick="toggleWire()">Connect</button>
+      <button id="runbtn" onclick="runPipeline()" class="pri" disabled>Run pipeline</button>
+      <button onclick="fitLab()">Fit</button>
+    </div>
+    <div class="labhint" id="labhint">drag to pan · scroll to zoom · shift+scroll to pan sideways</div>
+  </div>
+  <div class="grip on" id="gripL" title="Drag to resize · double-click to reset"></div>
+  <div class="side open" id="lab-side" style="width:min(400px,34vw)">
+    <div class="ptabs" id="lab-tabs"></div>
+    <div class="pbody" id="lab-body"></div>
+  </div>
+</div>
+
+<!-- ============ DEPLOYMENT ============ -->
+<div class="page" id="pg-deploy">
+  <div class="deploywrap">
+    <div class="dlist" id="dlist"></div>
+    <div class="dpane" id="dpane"></div>
+  </div>
+</div>
+
+<footer id="strip" style="display:none"></footer>
+<div class="statusbar" id="status" style="display:none"></div>
+<div id="tip"></div>
+<div id="modal" class="modal"><div class="mbox" role="dialog" aria-modal="true">
+  <div class="mhd"><span class="micon" id="m-icon"></span><span id="m-title"></span></div>
+  <div class="mbody" id="m-body"></div>
+  <div class="mfield" id="m-field"><input type="text" id="m-input" autocomplete="off"></div>
+  <div class="mact" id="m-act"></div>
+</div></div>
+<div id="lightbox" onclick="this.classList.remove('on')"><img id="lbimg" alt=""></div>
+
+<script src="app.js"></script>
+</body>
+</html>
