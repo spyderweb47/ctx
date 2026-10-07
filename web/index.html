@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ctx</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
 <style>
 :root{
   --k-pending:#e06c9f;
@@ -607,7 +609,7 @@ h2.ntitle{margin:0 0 16px;font-size:19px;line-height:1.25;letter-spacing:-.018em
    that point, so the thing you pressed becomes the thing that opened. */
 .aibtn{position:fixed;z-index:40;width:46px;height:46px;border-radius:50%;
   border:1px solid var(--line2);background:var(--panel);color:var(--ink);
-  font-size:17px;display:flex;align-items:center;justify-content:center;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
   cursor:grab;touch-action:none;user-select:none;
   box-shadow:0 2px 6px rgba(0,0,0,.42),0 10px 30px rgba(0,0,0,.42);
   transition:left .38s var(--spring),top .38s var(--spring),
@@ -619,7 +621,10 @@ h2.ntitle{margin:0 0 16px;font-size:19px;line-height:1.25;letter-spacing:-.018em
   border-color:var(--config);box-shadow:0 8px 34px rgba(0,0,0,.55)}
 .aibtn.hidden{opacity:0;pointer-events:none;transform:scale(.6)}
 .aibtn.busy span{animation:pulse 1.15s ease-in-out infinite}
-.aibtn span{display:block;line-height:1}
+.aibtn span{display:block;line-height:0}
+.aibtn img{display:block;pointer-events:none;
+  filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))}
+.aihd .aiface{flex-shrink:0;opacity:.9}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
 .aipanel{position:fixed;z-index:41;left:50%;bottom:44px;
@@ -858,9 +863,10 @@ footer{display:flex;border-top:1px solid var(--line);background:var(--panel);
 
 <!-- ============ ASSISTANT ============ -->
 <button class="aibtn" id="aibtn" title="Drag to move · click to open (⌘J)"
-        style="display:none"><span>✦</span></button>
+        style="display:none"><span><img src="/mark.svg" alt="" width="30" height="30" draggable="false"></span></button>
 <div class="aipanel" id="aipanel">
   <div class="aihd">
+    <img class="aiface" src="/mark.svg" alt="" width="20" height="20">
     <b>Assistant</b>
     <span id="aiwho">—</span>
     <button onclick="clearChat()" title="Forget this conversation">Clear</button>

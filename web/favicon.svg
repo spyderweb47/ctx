@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ctx">
+  <!-- The tab version: no antennae, a bigger visor, fewer parts. At 16px what
+       survives is the dark tile, the cyan visor and two eyes. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d2545"/>
+      <stop offset="1" stop-color="#0c1020"/>
+    </linearGradient>
+    <linearGradient id="shell2" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#434e85"/>
+      <stop offset="0.6" stop-color="#273057"/>
+      <stop offset="1" stop-color="#191f39"/>
+    </linearGradient>
+    <linearGradient id="eye2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8bf6ef"/>
+      <stop offset="1" stop-color="#a596fa"/>
+    </linearGradient>
+    <linearGradient id="gloss2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="15" fill="url(#tile)"/>
+
+  <circle cx="14.5" cy="35" r="6.6" fill="#7568f2"/>
+  <circle cx="14.5" cy="35" r="2.9" fill="#141a2e"/>
+  <circle cx="49.5" cy="35" r="6.6" fill="#7568f2"/>
+  <circle cx="49.5" cy="35" r="2.9" fill="#141a2e"/>
+
+  <ellipse cx="32" cy="33" rx="20" ry="19" fill="url(#shell2)"/>
+  <ellipse cx="32" cy="25" rx="15" ry="10" fill="url(#gloss2)"/>
+
+  <rect x="17.5" y="23" width="29" height="19.5" rx="9.75" fill="#0a0f1c"
+        stroke="#6feaf0" stroke-width="2.2"/>
+  <ellipse cx="26.2" cy="31.6" rx="3.9" ry="4.6" fill="url(#eye2)"/>
+  <ellipse cx="37.8" cy="31.6" rx="3.9" ry="4.6" fill="url(#eye2)"/>
+  <path d="M28.3 37.4 Q32 40.3 35.7 37.4" stroke="#6feaf0" stroke-width="2"
+        stroke-linecap="round" fill="none"/>
+</svg>

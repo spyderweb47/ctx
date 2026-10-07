@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ctx">
+  <defs>
+    <linearGradient id="shell" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#3a4475"/>
+      <stop offset="0.55" stop-color="#232b4c"/>
+      <stop offset="1" stop-color="#151a30"/>
+    </linearGradient>
+    <linearGradient id="eye" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7df3ec"/>
+      <stop offset="1" stop-color="#9a8cf8"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- antennae, behind the head -->
+  <path d="M21 19 L16.5 8" stroke="#2c3457" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="16" cy="7" r="2.7" fill="#5fe6e8"/>
+  <path d="M43 19 L47.5 8" stroke="#2c3457" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="48" cy="7" r="2.7" fill="#5fe6e8"/>
+
+  <!-- ear rings, tucked under the dome -->
+  <circle cx="14" cy="36" r="7.2" fill="#6d5df0"/>
+  <circle cx="14" cy="36" r="3.2" fill="#161c33"/>
+  <circle cx="50" cy="36" r="7.2" fill="#6d5df0"/>
+  <circle cx="50" cy="36" r="3.2" fill="#161c33"/>
+
+  <!-- dome -->
+  <ellipse cx="32" cy="34" rx="21" ry="20" fill="url(#shell)"/>
+  <ellipse cx="32" cy="26" rx="16" ry="11" fill="url(#gloss)"/>
+
+  <!-- visor -->
+  <rect x="18.5" y="24" width="27" height="18" rx="9" fill="#0d1322"
+        stroke="#5fe6e8" stroke-width="1.9"/>
+  <ellipse cx="26.6" cy="32" rx="3.5" ry="4.2" fill="url(#eye)"/>
+  <ellipse cx="37.4" cy="32" rx="3.5" ry="4.2" fill="url(#eye)"/>
+  <path d="M28.6 37.3 Q32 39.9 35.4 37.3" stroke="#5fe6e8" stroke-width="1.7"
+        stroke-linecap="round" fill="none"/>
+</svg>
