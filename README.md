@@ -9,6 +9,8 @@ python3 ctx.py serve     # canvas at http://127.0.0.1:7777
 python3 ctx.py list      # sessions in the terminal
 ```
 
+**Nothing to connect.** ctx reads the stores the CLIs already keep — `~/.claude` and `~/.codex` — so it finds your sessions on its own: no path to enter, no key, no config. Pick one at the picker and start. The built-in assistant uses the `claude` already on your `PATH`, with its existing login.
+
 ---
 
 ## The problem
@@ -71,6 +73,18 @@ extraction  →  analysis  →  review  →  Deployment
 - **analysis** is a notebook cell over what the extractions collected. Python, pandas, matplotlib, no limits. The namespace already knows the session: `ctx.matches()`, `ctx.texts()`, `ctx.match_df()`, `ctx.buckets`, `ctx.df()`.
 - **review** holds a proposal still while it is audited. Nothing reaches Deployment except through one.
 
+### The assistant — ✦ bottom right, or ⌘J
+
+The meta-agent, without the second terminal.
+
+The usual way to drive a tool like this is to open a *second* harness session, register an MCP server, and talk to that. It works, and it costs a whole session per project — ten projects means twenty terminals and remembering which one is pointed where.
+
+ctx spawns that agent itself instead. Same CLI, same login, no API key, no window of its own, always pointed at the ctx session you have open. Drag the launcher to any edge; click it and it docks to the bottom and the panel grows out of it.
+
+It has the ctx tools and **nothing else** — no Bash, no Read, no Write, no web. That is not only safety, it is what makes it cheap: with no filesystem to explore, the first thing it does is ask ctx. A first draft *with* file tools spent 21 turns and $0.16 reading ctx's own source to work out which session was active. Briefed and stripped down, the same question took **3 turns and $0.028**.
+
+It can read, search, build on the canvas, audit, and stage a change. It can never apply one — that is the MCP server's guarantee, not a setting. Each ctx session keeps its own conversation, resumed by id.
+
 ### Deployment — the only door to the transcript
 
 Stop the session, rewrite, validate, resume under the **same id**. Never a fork.
@@ -130,6 +144,8 @@ claude mcp add ctx -s user -- python3 /absolute/path/to/mcp_server.py
 ```
 
 Point it at a **different** session from the one you are analysing — an agent that analyses the session it lives in adds its own tool schemas to the context it is measuring.
+
+*(This is optional. The built-in assistant spawns its own agent and needs no registration — this is for driving ctx from a real terminal.)*
 
 | tool | | what it does |
 |---|---|---|

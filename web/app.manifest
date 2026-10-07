@@ -1,9 +1,15 @@
 HELP_ABOUT
+HELP_CHAT
 HELP_FLOW
 HELP_MCP
 HELP_VOICE
 HELP_WHY
 ago
+aiClamp
+aiHome
+aiInit
+aiPlace
+aiSnap
 allocate
 analysisSend
 applyDeploy
@@ -17,7 +23,9 @@ bigBody
 boot
 cancelEdit
 cellOutput
+chatKey
 clamp
+clearChat
 closeMenus
 closeSide
 code
@@ -54,6 +62,7 @@ lerp
 levelItems
 lightbox
 loadBoard
+loadChat
 loadDeploy
 loadRuns
 loadSaved
@@ -68,6 +77,7 @@ markSelection
 menu
 modal
 newNode
+noSessions
 nodeDrag
 nodeHTML
 nodeStats
@@ -83,6 +93,7 @@ openPending
 opsSummary
 opsTable
 overview
+paintChat
 paintCtxList
 paintDPane
 paintDeploy
@@ -95,6 +106,7 @@ pendingRuns
 pickHarness
 pipeFrom
 plainPreview
+pollChat
 pollLog
 pulse
 queueView
@@ -103,6 +115,7 @@ reload
 render
 renderBody
 renderMd
+rescan
 reviewPane
 rollbackDeploy
 runCell
@@ -114,7 +127,9 @@ runsHtml
 saveCell
 saveNode
 say
+scanLine
 selDeploy
+sendChat
 sendToReview
 seqTitle
 setLabTab
@@ -131,7 +146,9 @@ syncRunBtn
 tickPoll
 tip
 toLabs
+toggleChat
 toggleWire
+useExample
 validateTranscript
 verifyDeploy
 wireClick

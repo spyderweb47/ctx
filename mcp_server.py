@@ -424,10 +424,31 @@ def call(name: str, args: dict):
     data = ledger.build(ref)
 
     if name == "current_session":
-        slim = {k: v for k, v in data.items() if k != "buckets"}
-        slim["buckets"] = [{k: v for k, v in b.items() if k != "items"}
-                           for b in data["buckets"]]
-        return slim
+        # An agent reads this on a token budget; the canvas does not. Dumping
+        # the UI payload sent 352,000 characters -- 301,000 of it the full
+        # conversation stream -- and blew past the tool-result limit on the
+        # first call. Serve the shape, not the contents: totals, buckets and
+        # the levers. get_bucket and get_item exist for going deeper.
+        def bucket(b):
+            keep = ("label", "key", "title", "tokens", "pct", "count",
+                    "badge", "edit_class", "editable", "note")
+            return {k: b[k] for k in keep if k in b}
+        return {
+            "session": data["session"],
+            "buckets": [bucket(b) for b in data["buckets"]],
+            "fixed": [bucket(b) for b in data.get("fixed") or []],
+            "est_total": data["est_total"], "exact_total": data.get("exact_total"),
+            "editable_total": data.get("editable_total"),
+            "fixed_total": data.get("fixed_total"),
+            "calibrated": data.get("calibrated"), "calibration": data.get("calibration"),
+            "drift_pct": data.get("drift_pct"), "segment_count": data.get("segment_count"),
+            "reasoning_generated": data.get("reasoning_generated"),
+            "cut": data.get("cut"), "needs_restart": data.get("needs_restart"),
+            "conversation_kinds": data.get("conversation_kinds"),
+            "note": "buckets are the editable surface; 'fixed' is in the package "
+                    "with no lever. Use get_bucket('B') for items, get_item('B1') "
+                    "for text, extract_run to search.",
+        }
 
     if name in ("get_bucket", "get_item"):
         raw = args.get("bucket") if name == "get_bucket" else args.get("item")

@@ -11,8 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import (active, board, deploy, extract, ledger, mcplog, notebook,
-               pipeline, workspace)
+from . import (active, board, chat, deploy, extract, ledger, mcplog,
+               notebook, pipeline, workspace)
 from .adapters import discover_all
 from .base import EDIT_CLASS_COLOR, EDIT_CLASS_INFO
 
@@ -199,6 +199,14 @@ class Handler(BaseHTTPRequestHandler):
                                    "flags": "|".join(sorted(live)),
                                    "deploy": dep})
 
+            if u.path == "/api/chat":
+                key = q.get("key") or active.get() or ""
+                return self._json(chat.load(key))
+
+            if u.path == "/api/chat/events":
+                return self._json(chat.events(q.get("run", ""),
+                                              int(q.get("after") or 0)))
+
             if u.path == "/api/board":
                 key = q.get("key") or active.get() or ""
                 r = _refs().get(key)
@@ -315,6 +323,18 @@ class Handler(BaseHTTPRequestHandler):
             if op == "remove":
                 return self._json({"board": board.remove(key, body.get("label", ""), name)})
             return self._json({"error": "unknown board op"}, 404)
+
+        if u.path.startswith("/api/chat/"):
+            key = body.get("key") or active.get() or ""
+            op = u.path.rsplit("/", 1)[-1]
+            if op == "send":
+                return self._json(chat.send(key, body.get("text", ""),
+                                            body.get("model", "")))
+            if op == "stop":
+                return self._json(chat.stop(body.get("run", "")))
+            if op == "clear":
+                return self._json({"ok": True, "chat": chat.clear(key)})
+            return self._json({"error": "unknown chat op"}, 404)
 
         if u.path.startswith("/api/extract/"):
             key = body.get("key") or active.get() or ""

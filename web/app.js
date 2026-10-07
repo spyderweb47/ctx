@@ -153,12 +153,62 @@ function paintSessions(q) {
       <span class="nm">${esc(s.name)}</span>
       <span class="mt">${esc(s.adapter)} · ${esc((s.cwd || '').split('/').slice(-2).join('/'))}</span>
       <span class="go">${PICK === s.key ? '&#10003;' : '&rsaquo;'}</span>
-    </div>`).join('') || '<div class="empty">Nothing matches that filter.</div>';
+    </div>`).join('') || (q
+      ? '<div class="empty">Nothing matches that filter.</div>'
+      : noSessions());
+  $('#scanned').innerHTML = scanLine();
   $('#slist').querySelectorAll('.srow').forEach(e => {
     e.onclick = () => pickHarness(e.dataset.key);
     e.ondblclick = () => { pickHarness(e.dataset.key); createCtx(); };
   });
 }
+/* Nothing here is configured, so say where it came from. A picker that lists
+   sessions with no explanation leaves a newcomer wondering what it connected
+   to, and an empty one looks broken rather than simply early. */
+/* Sessions appear the moment a CLI writes one, so looking again is the whole
+   fix for "I just started one and it is not here". */
+async function rescan() {
+  const b = $('#rescanbtn');
+  if (b) { b.disabled = true; b.textContent = 'Scanning'; }
+  const before = SESSIONS.length;
+  try {
+    const d = await (await fetch('/api/sessions')).json();
+    SESSIONS = d.sessions || [];
+  } catch (e) { /* leave what we had */ }
+  paintSessions(($('#filter') || {}).value || '');
+  if (b) { b.disabled = false; b.textContent = 'Rescan'; }
+  const n = SESSIONS.length - before;
+  flash(n > 0 ? `${n} new session${n === 1 ? '' : 's'} found.`
+    : SESSIONS.length ? `${SESSIONS.length} sessions — nothing new.` : 'Still nothing found.');
+}
+
+function scanLine() {
+  const n = SESSIONS.length;
+  if (!n) return '';
+  const by = {};
+  for (const s of SESSIONS) by[s.adapter] = (by[s.adapter] || 0) + 1;
+  const live = SESSIONS.filter(s => s.status === 'running').length;
+  return `Found <b>${n}</b> session${n === 1 ? '' : 's'} \u2014 ${
+    Object.entries(by).map(([a, c]) => `${c} ${esc(a)}`).join(' \u00b7 ')}${
+    live ? ` \u00b7 <b>${live}</b> running now` : ''}. Read from
+    <code>~/.claude</code> and <code>~/.codex</code>; nothing was configured.`;
+}
+
+function noSessions() {
+  return `<div class="empty" style="text-align:left;padding:26px 20px">
+    <b style="color:var(--dim);display:block;margin-bottom:9px">No sessions found yet.</b>
+    ctx reads the stores Claude Code and Codex already keep in your home
+    directory \u2014 <code>~/.claude</code> and <code>~/.codex</code>. There is
+    nothing to connect and no key to enter; it simply had nothing to read.
+    <br><br>
+    Start a session in either CLI, send it one message so it writes a
+    transcript, then press <b>Rescan</b>.
+    <br><br>
+    <span style="color:var(--faint)">If you keep them elsewhere, point
+    <code>HOME</code> at it before launching ctx.</span>
+  </div>`;
+}
+
 function pickHarness(key) {
   PICK = key;
   const s = SESSIONS.find(x => x.key === key);
@@ -208,6 +258,8 @@ async function importSession(key) {
   $('#mws').textContent = WS ? WS.name : '—';
   $('#mharness').textContent = `${DATA.session.adapter} · ${DATA.session.name}`;
   paintKinds();
+  $('#aibtn').style.display = 'flex'; aiInit();
+  CHAT = { messages: [] }; CHATLIVE = []; CHATRUN = null;
   PULSE = null; STALE = false; FRESH = Date.now() / 1000;
   paintRefresh();
   status();
@@ -1717,6 +1769,8 @@ async function tickPoll() {
   status();
 }
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !MODAL_CLOSE && $('#aipanel').classList.contains('open')
+      && document.activeElement !== $('#aiin')) return toggleChat(false);
   if (e.key !== 'Escape' || MODAL_CLOSE) return;
   if (PAGE === 'explorer') { $('#ex-side').classList.contains('open') ? closeSide() : (SEL && overview()); }
   if (PAGE === 'labs') { if (WIRE) toggleWire(); else labSide(false); }
@@ -1806,6 +1860,7 @@ function mHelp(a) {
   closeMenus();
   if (a === 'why') return say('What ctx is for', HELP_WHY());
   if (a === 'flow') return say('A working session, end to end', HELP_FLOW());
+  if (a === 'chat') return say('The assistant', HELP_CHAT());
   if (a === 'voice') return say('Working by voice', HELP_VOICE());
   if (a === 'mcp') return say('Connect an agent (MCP)', HELP_MCP());
   return say('ctx', HELP_ABOUT());
@@ -1881,6 +1936,30 @@ const HELP_FLOW = () => `
   <br><br>
   It stages; you deploy. Every apply snapshots first, validates tool-call
   pairing, and rolls back if the result does not hold.`;
+
+const HELP_CHAT = () => `
+  <b>\u2726 bottom right, or \u2318J.</b> It is the meta-agent without the second
+  terminal: the same Claude Code, your same login, spawned headlessly by the
+  server and always pointed at the ctx session you have open.
+  <br><br>
+  <b>Why it exists.</b> The two-session pattern works but costs a whole harness
+  per project \u2014 ten projects meant twenty terminals and remembering which one
+  was aimed where. This is the same agent with no window of its own.
+  <br><br>
+  <b>What it can do.</b> Read the context, search it, build on the canvas, audit
+  a review, and stage a deployment. It answers with labels \u2014
+  <code class="inl">K85</code>, <code class="inl">B</code>,
+  <code class="inl">D13</code> \u2014 so you can act on what it says.
+  <br><br>
+  <b>What it cannot do.</b> Touch your filesystem: Bash, Read, Write, Edit and
+  the rest are denied, so the ctx tools are its only source. And it cannot apply
+  anything \u2014 staging is as far as it goes, by the MCP server's own guarantee.
+  <br><br>
+  <b>It remembers.</b> Each ctx session has its own conversation, resumed by id.
+  <b>Clear</b> forgets both the thread and the agent session.
+  <br><br>
+  Switch ctx to another session and the assistant follows \u2014 it reads whatever
+  is active, so the answer is always about what you are looking at.`;
 
 const HELP_VOICE = () => `
   ctx is built to be <b>spoken to</b>. If you dictate into a CLI or an agent,
@@ -2037,6 +2116,199 @@ function layoutLab() {
 })();
 addEventListener('resize', () => { if (PAGE === 'labs') layoutLab(); });
 
+/* ═══════════════ ASSISTANT ═══════════════
+   The same harness you would open in a second terminal, spawned headlessly by
+   the server and pointed at whatever ctx session is open. It has the ctx tools
+   and nothing else -- no filesystem, no shell -- and it can stage a change but
+   never apply one. */
+let CHAT = { messages: [] }, CHATRUN = null, CHATBUSY = false, CHATLIVE = [];
+
+const CHAT_EXAMPLES = [
+  'What is heaviest in this context, and what can I actually change?',
+  'Find everything about <topic> and tell me what it costs',
+  'What in here is stale or contradicted later?',
+];
+
+/* ---- the launcher: park it anywhere, it docks to open ----
+   Position is yours and is remembered. A press that moves is a drag; a press
+   that does not is a click, so the same button does both without a handle. */
+const AIB = 46, AIPAD = 14;
+let AIPOS = null, AIDRAG = null, AIMOVED = false;
+
+function aiHome() {                       /* where it sits when you have not moved it */
+  return { x: innerWidth - AIB - 20, y: innerHeight - AIB - 64 };
+}
+function aiClamp(p) {
+  return { x: clamp(p.x, AIPAD, Math.max(AIPAD, innerWidth - AIB - AIPAD)),
+           y: clamp(p.y, AIPAD, Math.max(AIPAD, innerHeight - AIB - AIPAD)) };
+}
+
+/* Let go and it sticks to an edge, never mid-canvas: x snaps to whichever side
+   is nearer, and y snaps to top or bottom when it is close enough to read as a
+   corner. So it is always out of the way, and the corners are magnetic. */
+const AICORNER = 130;
+function aiSnap(p) {
+  const maxX = Math.max(AIPAD, innerWidth - AIB - AIPAD);
+  const maxY = Math.max(AIPAD, innerHeight - AIB - AIPAD);
+  const c = aiClamp(p);
+  const x = (c.x + AIB / 2 < innerWidth / 2) ? AIPAD : maxX;
+  let y = c.y;
+  if (c.y - AIPAD < AICORNER) y = AIPAD;
+  else if (maxY - c.y < AICORNER) y = maxY;
+  return { x, y };
+}
+function aiPlace(p, save) {
+  AIPOS = aiClamp(p);
+  const b = $('#aibtn'); if (!b) return;
+  b.style.left = AIPOS.x + 'px'; b.style.top = AIPOS.y + 'px';
+  if (save) { try { localStorage.setItem('ctx.aipos', JSON.stringify(AIPOS)); } catch (e) {} }
+}
+function aiInit() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem('ctx.aipos') || 'null'); } catch (e) {}
+  aiPlace(aiSnap(p && typeof p.x === 'number' ? p : aiHome()), false);
+}
+
+(function () {
+  const b = $('#aibtn'); if (!b) return;
+  b.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    b.setPointerCapture(e.pointerId);
+    AIDRAG = { dx: e.clientX - AIPOS.x, dy: e.clientY - AIPOS.y,
+               x0: e.clientX, y0: e.clientY, moved: false };
+  });
+  b.addEventListener('pointermove', e => {
+    if (!AIDRAG) return;
+    if (!AIDRAG.moved &&
+        Math.hypot(e.clientX - AIDRAG.x0, e.clientY - AIDRAG.y0) > 4) {
+      AIDRAG.moved = true; b.classList.add('dragging');
+    }
+    if (AIDRAG.moved) aiPlace({ x: e.clientX - AIDRAG.dx, y: e.clientY - AIDRAG.dy }, false);
+  });
+  const end = () => {
+    if (!AIDRAG) return;
+    AIMOVED = AIDRAG.moved;
+    AIDRAG = null; b.classList.remove('dragging');
+    if (AIMOVED) aiPlace(aiSnap(AIPOS), true);   /* springs to the nearest edge */
+  };
+  b.addEventListener('pointerup', end);
+  b.addEventListener('pointercancel', end);
+
+  /* Opening is the CLICK's job, not pointerup's -- that keeps the keyboard
+     working. The browser fires a click after a drag too, so a drag swallows
+     exactly one. */
+  b.addEventListener('click', e => {
+    if (AIMOVED) { AIMOVED = false; e.preventDefault(); e.stopPropagation(); return; }
+    toggleChat();
+  });
+  addEventListener('resize', () => { if (AIPOS) aiPlace(aiSnap(AIPOS), false); });
+})();
+
+function toggleChat(force) {
+  const p = $('#aipanel'), b = $('#aibtn');
+  const open = force === undefined ? !p.classList.contains('open') : force;
+  if (open) {
+    /* slide to the dock, then grow the panel out of that point */
+    const dock = aiClamp({ x: innerWidth / 2 - AIB / 2, y: innerHeight - AIB - 54 });
+    b.style.left = dock.x + 'px'; b.style.top = dock.y + 'px';
+    setTimeout(() => b.classList.add('hidden'), 150);
+    setTimeout(() => p.classList.add('open'), 90);
+    loadChat();
+    setTimeout(() => $('#aiin') && $('#aiin').focus(), 420);
+  } else {
+    p.classList.remove('open');
+    b.classList.remove('hidden');
+    aiPlace(aiSnap(AIPOS || aiHome()), false);   /* back to its edge */
+  }
+  b.classList.toggle('on', open);
+}
+
+async function loadChat() {
+  if (!DATA) return;
+  try {
+    CHAT = await (await fetch('/api/chat?key=' + encodeURIComponent(DATA.session.key))).json();
+  } catch (e) { CHAT = { messages: [] }; }
+  paintChat();
+}
+
+function paintChat(scroll = true) {
+  const b = $('#aibody'); if (!b) return;
+  const who = $('#aiwho');
+  if (who && DATA) who.textContent = (WS ? WS.name + ' · ' : '') + DATA.session.name;
+  const msgs = CHAT.messages || [];
+  if (!msgs.length && !CHATBUSY) {
+    b.innerHTML = `<div class="aiempty"><b>Ask about this session.</b>
+      It reads the same context Explorer draws, searches it, and can stage a change
+      for you to apply. It cannot touch your files, and it cannot deploy.
+      ${CHAT_EXAMPLES.map(x => `<button class="aiex" onclick="useExample(this)">${esc(x)}</button>`).join('')}</div>`;
+    return;
+  }
+  b.innerHTML = msgs.map(m => m.role === 'you' || m.role === 'user'
+    ? `<div class="aimsg you">${esc(m.text)}</div>`
+    : `<div class="aimsg it">${(m.tools || []).length
+        ? `<div class="aitools">${m.tools.map(t => `<span class="aitool">${esc(t)}</span>`).join('')}</div>` : ''}
+       ${m.text ? renderMd(m.text) : '<i style="color:var(--faint)">no reply</i>'}</div>`).join('')
+    + (CHATBUSY ? `<div class="aimsg it"><div class="aitools">${
+        CHATLIVE.map((t, i) => `<span class="aitool${i === CHATLIVE.length - 1 ? ' live' : ''}">${esc(t)}</span>`).join('')
+        || '<span class="aitool live">thinking</span>'}</div></div>` : '');
+  if (scroll) b.scrollTop = b.scrollHeight;
+}
+
+function useExample(el2) { $('#aiin').value = el2.textContent.trim(); $('#aiin').focus(); }
+
+function chatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+}
+
+async function sendChat() {
+  if (CHATBUSY || !DATA) return;
+  const box = $('#aiin'), text = (box.value || '').trim();
+  if (!text) return;
+  box.value = ''; box.style.height = 'auto';
+  (CHAT.messages = CHAT.messages || []).push({ role: 'you', text, at: Date.now() / 1000 });
+  CHATBUSY = true; CHATLIVE = [];
+  $('#aibtn').classList.add('busy'); $('#aisend').textContent = 'Working';
+  paintChat();
+  const r = await (await fetch('/api/chat/send', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: DATA.session.key, text }) })).json();
+  if (!r.ok) { CHATBUSY = false; $('#aibtn').classList.remove('busy');
+    $('#aisend').textContent = 'Send'; return say('Could not send', esc(r.error || ''), 'warn'); }
+  CHATRUN = r.run;
+  pollChat(r.run, 0);
+}
+
+async function pollChat(run, after) {
+  if (CHATRUN !== run) return;
+  let e;
+  try {
+    e = await (await fetch(`/api/chat/events?run=${run}&after=${after}`)).json();
+  } catch (err) { return setTimeout(() => pollChat(run, after), 1200); }
+  if (!e.ok) { CHATBUSY = false; $('#aibtn').classList.remove('busy');
+    $('#aisend').textContent = 'Send'; return; }
+  for (const ev of e.events) {
+    if (ev.t === 'tool') CHATLIVE.push(ev.v);
+    else if (ev.t === 'error') CHATLIVE.push('failed: ' + ev.v.slice(0, 60));
+  }
+  if (e.events.length) paintChat();
+  if (!e.done) return setTimeout(() => pollChat(run, e.next), 700);
+  CHATBUSY = false; CHATRUN = null;
+  $('#aibtn').classList.remove('busy'); $('#aisend').textContent = 'Send';
+  await loadChat();
+}
+
+async function clearChat() {
+  if (!DATA) return;
+  if (!await ask('Clear this conversation?',
+    'The assistant forgets what you have been discussing and starts fresh.',
+    { ok: 'Clear', danger: true })) return;
+  await fetch('/api/chat/clear', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: DATA.session.key }) });
+  CHAT = { messages: [] }; CHATLIVE = []; paintChat();
+}
+
 /* ═══════════════ KEYBOARD ═══════════════ */
 addEventListener('keydown', e => {
   if (MODAL_CLOSE) return;                 /* a dialog owns the keyboard */
@@ -2046,6 +2318,7 @@ addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); return mFile('open'); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); return mEdit('code'); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') { e.preventDefault(); return refreshData(false); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); return toggleChat(); }
   if (e.shiftKey && e.key === 'Enter' && PAGE === 'labs') { e.preventDefault(); return runCell(); }
   if (typing) return;
   if (e.key === '1') setPage('explorer');
