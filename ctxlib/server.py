@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import (active, board, chat, deploy, extract, ledger, mcplog,
+from . import (active, board, chat, deploy, deps, extract, ledger, mcplog,
                notebook, pipeline, workspace)
 from .adapters import discover_all
 from .base import EDIT_CLASS_COLOR, EDIT_CLASS_INFO
@@ -480,6 +480,7 @@ def serve(port: int = 7777, open_browser: bool = True):
     n = len(discover_all())
     print(f"ctx  ->  {url}")
     print(f"     {n} sessions found across claude-code + codex")
+    deps.ensure()
     if open_browser:
         webbrowser.open(url)
     try:

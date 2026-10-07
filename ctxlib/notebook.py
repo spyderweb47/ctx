@@ -16,6 +16,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import deps
+
 TIMEOUT = 40
 
 RUNNER = r'''
@@ -25,9 +27,12 @@ _out = os.environ["CTX_OUT"]
 _data = json.load(open(os.environ["CTX_DATA"], encoding="utf-8"))
 _code = open(os.environ["CTX_CODE"], encoding="utf-8").read()
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ImportError:          # a cell that never plots still runs
+    matplotlib = plt = None
 
 
 class _Ctx:
@@ -128,7 +133,7 @@ finally:
 res["stdout"] = buf_out.getvalue()[-40000:]
 res["stderr"] = buf_err.getvalue()[-8000:]
 
-for num in plt.get_fignums():
+for num in (plt.get_fignums() if plt else []):
     fig = plt.figure(num)
     b = io.BytesIO()
     try:
@@ -138,7 +143,8 @@ for num in plt.get_fignums():
                              base64.b64encode(b.getvalue()).decode())
     except Exception:
         pass
-plt.close("all")
+if plt:
+    plt.close("all")
 
 json.dump(res, open(_out, "w", encoding="utf-8"))
 '''
@@ -155,7 +161,7 @@ def run(code: str, data: dict, timeout: int = TIMEOUT) -> dict:
                    CTX_OUT=str(d / "out.json"), CTX_CODE=str(d / "code.py"),
                    CTX_DATA=str(d / "data.json"), MPLBACKEND="Agg")
         try:
-            p = subprocess.run([sys.executable, str(d / "runner.py")], env=env,
+            p = subprocess.run([deps.python(), str(d / "runner.py")], env=env,
                                capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": f"cell timed out after {timeout}s",

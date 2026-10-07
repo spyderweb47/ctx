@@ -2,7 +2,7 @@
 
 **See what is actually inside a running AI coding session's context — and change it.**
 
-Python 3 standard library only. No install, no dependencies, no account. Runs on macOS, Linux and Windows.
+Python 3 standard library only. No install, no account. Runs on macOS, Linux and Windows. The one optional extra — pandas and matplotlib for the Labs notebook — installs itself into `~/.ctx/venv` the first time you `serve`.
 
 ```bash
 python3 ctx.py serve     # canvas at http://127.0.0.1:7777
@@ -70,7 +70,7 @@ extraction  →  analysis  →  review  →  Deployment
 ```
 
 - **extraction** gathers. One question — "which records mention this?" — answered as an ordered set of real, addressable items. It holds addresses, not copies, so it never goes stale.
-- **analysis** is a notebook cell over what the extractions collected. Python, pandas, matplotlib, no limits. The namespace already knows the session: `ctx.matches()`, `ctx.texts()`, `ctx.match_df()`, `ctx.buckets`, `ctx.df()`.
+- **analysis** is a notebook cell over what the extractions collected. Python, pandas, matplotlib, no limits. Those two packages are the only thing ctx needs beyond the standard library; `serve` installs them into a private venv on first run (`python3 ctx.py deps` does it on demand, `CTX_NO_AUTO_DEPS=1` skips it). The namespace already knows the session: `ctx.matches()`, `ctx.texts()`, `ctx.match_df()`, `ctx.buckets`, `ctx.df()`.
 - **review** holds a proposal still while it is audited. Nothing reaches Deployment except through one.
 
 ### The assistant — ✦ bottom right, or ⌘J
@@ -191,6 +191,7 @@ ctxlib/extract.py         search the context, keep addresses not copies
 ctxlib/deploy.py          stage, snapshot, validate, apply, surgical rollback
 ctxlib/board.py           canvas nodes, edges, one-way flow
 ctxlib/notebook.py        Python cells with the session in scope
+ctxlib/deps.py            first-run install of the notebook's pandas + matplotlib
 ctxlib/server.py          stdlib HTTP + JSON API
 ctxlib/adapters/          claude_code.py, codex.py
 web/                      the client

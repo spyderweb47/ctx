@@ -3,6 +3,7 @@
 
   python3 ctx.py serve [--port N] [--no-open]
   python3 ctx.py list
+  python3 ctx.py deps            # install the notebook's pandas + matplotlib now
 """
 from __future__ import annotations
 
@@ -27,6 +28,10 @@ def main() -> int:
     cmd = argv[0] if argv else "serve"
     if cmd == "list":
         cmd_list()
+        return 0
+    if cmd == "deps":
+        from ctxlib import deps
+        print(f"notebook cells run under: {deps.ensure()}")
         return 0
     if cmd == "serve":
         from ctxlib.server import serve
